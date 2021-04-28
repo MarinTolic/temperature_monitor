@@ -1,6 +1,7 @@
 package hr.hako.temperature_monitor.persistence.interactors
 
 import hr.hako.temperature_monitor.model.controller_models.CombinedReading
+import hr.hako.temperature_monitor.model.entities.TemperatureReading
 import hr.hako.temperature_monitor.persistence.repository.HumidityRepository
 import hr.hako.temperature_monitor.persistence.repository.TemperatureRepository
 import kotlinx.coroutines.*
@@ -15,45 +16,27 @@ class ReadingInteractorImpl(
     private val humidityRepository: HumidityRepository
 ) : ReadingInteractor {
 
-    private val coroutineScope = CoroutineScope(Dispatchers.IO)
-    private val mutableJobList = mutableListOf<Job>()
-    private val writeFlow = createWriteFlow()
-
-    init {
-        collectWriteFlow()
-    }
-
-    override fun tryEmitReading(combinedReading: CombinedReading) {
-        writeFlow.tryEmit(combinedReading)
-    }
-
-    private fun collectWriteFlow() {
-        val job = coroutineScope.launch {
-            writeFlow.collect { combinedReading ->
-                writeReading(combinedReading)
-            }
+    override suspend fun getAllTemperatureReadings(): List<TemperatureReading> {
+        return withContext(Dispatchers.IO) {
+            temperatureRepository.findAll()
         }
-        mutableJobList.add(job)
     }
 
-    private fun writeReading(combinedReading: CombinedReading) {
-        temperatureRepository.save(combinedReading.toTemperatureReading())
-        humidityRepository.save(combinedReading.toHumidityReading())
+    override suspend fun writeReading(combinedReading: CombinedReading) {
+        withContext(Dispatchers.IO) {
+            temperatureRepository.save(combinedReading.toTemperatureReading())
+            humidityRepository.save(combinedReading.toHumidityReading())
+        }
     }
 
-    private fun createWriteFlow(): MutableSharedFlow<CombinedReading> =
-        MutableSharedFlow(
-            extraBufferCapacity = 100,
-            onBufferOverflow = BufferOverflow.SUSPEND
-        )
-
-    fun closeScope() {
-        coroutineScope.cancel()
-    }
-
-    fun cancelJobs() {
-        mutableJobList.forEach { job ->
-            job.cancel()
+    override fun loadDummies() {
+        for (i in 0..10) {
+            temperatureRepository.save(
+                TemperatureReading(
+                    i.toDouble(),
+                    i.toLong()
+                )
+            )
         }
     }
 
